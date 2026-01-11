@@ -9,7 +9,7 @@ import AdminPanel from './components/AdminPanel';
 import RemoteAccessModal from './components/RemoteAccessModal';
 import RemoteController from './components/RemoteController';
 import Logo from './components/Logo';
-import { LayoutDashboard, Clock, Smartphone, Wifi, MousePointer2, MonitorPlay, Zap, AlertCircle } from 'lucide-react';
+import { LayoutDashboard, Clock, Smartphone, Wifi, MousePointer2, MonitorPlay, Zap, AlertCircle, Tag, ArrowLeft, X } from 'lucide-react';
 
 const syncChannel = new BroadcastChannel('smart-pague-menos-sync');
 
@@ -25,6 +25,7 @@ const App: React.FC = () => {
   const [showControls, setShowControls] = useState(true);
   const [isBooting, setIsBooting] = useState(false);
   const [needsInteraction, setNeedsInteraction] = useState(false);
+  const [initialAdminTab, setInitialAdminTab] = useState<string>('general');
   
   const [rotation, setRotation] = useState(0);
   const [resolution, setResolution] = useState<'auto' | '1080p' | '720p'>('auto');
@@ -32,6 +33,17 @@ const App: React.FC = () => {
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
 
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleInteraction = useCallback(() => {
+    if (!isTvMode) return;
+    
+    setShowControls(true);
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    
+    controlsTimeoutRef.current = setTimeout(() => {
+      if (isTvMode) setShowControls(false);
+    }, 3000);
+  }, [isTvMode]);
 
   useEffect(() => {
     const handleResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
@@ -47,22 +59,30 @@ const App: React.FC = () => {
     const newState = forceState !== undefined ? forceState : !isTvMode;
     
     if (newState) {
-      document.documentElement.requestFullscreen()
-        .then(() => {
-          setIsBooting(true);
-          setNeedsInteraction(false);
-          setTimeout(() => {
-            setIsTvMode(true);
-            setShowControls(false);
-            setIsBooting(false);
-          }, 1500);
-        })
-        .catch((err) => {
-          console.warn("Fullscreen bloqueado. Necessita interação do usuário.", err);
-          setNeedsInteraction(true);
-        });
+      // Início do boot visual indepentente da API de Fullscreen (previne tela escura se fullscreen falhar no APK)
+      setIsBooting(true);
+      setNeedsInteraction(false);
+
+      const finalizeMode = () => {
+        setIsTvMode(true);
+        setShowControls(false);
+        setIsBooting(false);
+      };
+
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen()
+          .then(() => setTimeout(finalizeMode, 1500))
+          .catch(() => {
+            // Se falhar (comum em webviews bloqueados), apenas continua o modo TV visual
+            setTimeout(finalizeMode, 1000);
+          });
+      } else {
+        setTimeout(finalizeMode, 1000);
+      }
     } else {
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
       setIsTvMode(false);
       setShowControls(true);
       setNeedsInteraction(false);
@@ -76,7 +96,7 @@ const App: React.FC = () => {
           const updatedCat = event.data.payload;
           setCategories(prev => prev.map(cat => cat.id === updatedCat.id ? updatedCat : cat));
           if (viewMode === 'display') {
-            setSyncToastMsg('Cardápio Atualizado');
+            setSyncToastMsg('Preços Atualizados');
             setShowSyncToast(true);
             setTimeout(() => setShowSyncToast(false), 3000);
           }
@@ -110,12 +130,19 @@ const App: React.FC = () => {
   }, []);
 
   const layoutMetrics = useMemo(() => {
+    // Valores padrão seguros para evitar NaN ou 0 que resultam em tela preta
     const targetW = resolution === 'auto' ? 1920 : (resolution === '1080p' ? 1920 : 1280);
     const targetH = resolution === 'auto' ? 1080 : (resolution === '1080p' ? 1080 : 720);
     const isPortrait = rotation === 90 || rotation === 270;
     const effectiveW = isPortrait ? targetH : targetW;
     const effectiveH = isPortrait ? targetW : targetH;
-    const scale = Math.min(windowSize.width / effectiveW, windowSize.height / effectiveH);
+    
+    // Cálculo de escala com proteção de valor mínimo (evita conteúdo invisível se windowSize for 0 momentaneamente)
+    const scaleX = (windowSize.width || 1) / effectiveW;
+    const scaleY = (windowSize.height || 1) / effectiveH;
+    let scale = Math.min(scaleX, scaleY);
+
+    if (isNaN(scale) || scale <= 0) scale = 0.5;
 
     return { 
       width: `${targetW}px`, 
@@ -137,6 +164,11 @@ const App: React.FC = () => {
     opacity: isBooting ? 0 : 1,
   };
 
+  const openAdmin = (tab: string) => {
+    setInitialAdminTab(tab);
+    setViewMode('admin');
+  };
+
   if (viewMode === 'remote') return (
     <RemoteController 
       categories={categories} 
@@ -146,23 +178,36 @@ const App: React.FC = () => {
   );
 
   const activeCategory = categories[currentIndex];
+  const hasSidebar = activeCategory.showMainOffer || activeCategory.showSideOffers;
 
   return (
-    <div className={`relative min-h-screen w-full bg-[#050505] overflow-hidden select-none`}>
+    <div 
+      className="relative min-h-screen w-full bg-[#050505] overflow-hidden select-none"
+      onMouseMove={handleInteraction}
+      onClick={handleInteraction}
+      onTouchStart={handleInteraction}
+    >
       
+      {isTvMode && (
+        <button 
+          onClick={() => toggleTvMode(false)}
+          className={`fixed top-8 left-8 z-[500] flex items-center gap-4 bg-red-600/90 hover:bg-red-600 text-white px-8 py-5 rounded-full font-black uppercase text-xl shadow-2xl transition-all duration-500 border-2 border-white/20 backdrop-blur-md active:scale-95 ${showControls ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-20 pointer-events-none'}`}
+        >
+          <ArrowLeft size={32} strokeWidth={3} /> Sair do Modo TV
+        </button>
+      )}
+
       {needsInteraction && (
-        <div className="fixed inset-0 z-[400] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-10 text-center animate-in fade-in duration-500">
-          <div className="bg-[#111] p-12 rounded-[3rem] border border-white/10 shadow-[0_0_100px_rgba(214,26,26,0.3)] max-w-xl">
+        <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-10 text-center">
+          <div className="bg-[#111] p-12 rounded-[3rem] border border-white/10 shadow-2xl max-w-xl">
             <AlertCircle className="text-yellow-400 mx-auto mb-6" size={80} />
-            <h2 className="text-4xl font-black text-white uppercase tracking-tighter mb-4">Ação Necessária</h2>
-            <p className="text-gray-400 text-lg mb-8 leading-relaxed">
-              Para ativar o Modo TV remotamente, o navegador exige um clique inicial nesta tela para permitir o controle de tela cheia.
-            </p>
+            <h2 className="text-4xl font-black text-white uppercase mb-4">Ação Necessária</h2>
+            <p className="text-gray-400 text-lg mb-8">Clique abaixo para ativar o modo de tela cheia e sincronização de TV.</p>
             <button 
               onClick={() => toggleTvMode(true)}
-              className="bg-[#d61a1a] text-white px-16 py-6 rounded-2xl font-black uppercase text-xl shadow-2xl active:scale-95 transition-all"
+              className="bg-[#d61a1a] text-white px-16 py-6 rounded-2xl font-black uppercase text-xl shadow-2xl transition-all active:scale-95"
             >
-              Ativar Link de TV
+              Ativar Painel TV
             </button>
           </div>
         </div>
@@ -170,21 +215,18 @@ const App: React.FC = () => {
 
       {isBooting && (
         <div className="fixed inset-0 z-[300] bg-black flex flex-col items-center justify-center gap-8">
-           <div className="relative">
-             <div className="absolute inset-0 bg-red-600 blur-3xl opacity-30 animate-pulse"></div>
-             <Logo size="xl" />
-           </div>
+           <Logo size="xl" />
            <div className="flex flex-col items-center gap-2">
              <div className="w-64 h-1 bg-white/10 rounded-full overflow-hidden">
                <div className="h-full bg-red-600 animate-[loading_1.5s_ease-in-out]"></div>
              </div>
-             <span className="text-xs font-black text-gray-500 uppercase tracking-[0.5em] animate-pulse">Iniciando Painel Digital</span>
+             <span className="text-xs font-black text-gray-500 uppercase tracking-[0.5em] animate-pulse">Sincronizando Sistema</span>
            </div>
         </div>
       )}
 
       {showSyncToast && (
-        <div className="fixed top-12 left-1/2 -translate-x-1/2 z-[250] bg-[#d61a1a] text-white px-12 py-6 rounded-full font-black uppercase tracking-[0.2em] shadow-[0_20px_60px_rgba(214,26,26,0.5)] flex items-center gap-6 animate-in slide-in-from-top-12 duration-500">
+        <div className="fixed top-12 left-1/2 -translate-x-1/2 z-[250] bg-[#d61a1a] text-white px-12 py-6 rounded-full font-black uppercase tracking-[0.2em] shadow-2xl flex items-center gap-6 animate-in slide-in-from-top-12 duration-500">
            <Zap size={24} className="text-yellow-400 fill-yellow-400" />
            <span className="text-2xl">{syncToastMsg}</span>
         </div>
@@ -199,7 +241,7 @@ const App: React.FC = () => {
                 <h1 className="text-8xl font-oswald font-black text-white tracking-tighter uppercase leading-none">
                   Smart <span className="text-yellow-500">PAGUE MENOS</span>
                 </h1>
-                <p className="text-2xl font-bold text-red-500 tracking-[0.5em] uppercase mt-2">Qualidade que você confia</p>
+                <p className="text-2xl font-bold text-red-500 tracking-[0.5em] uppercase mt-2">Tecnologia e Qualidade</p>
               </div>
             </div>
 
@@ -207,7 +249,7 @@ const App: React.FC = () => {
               <div className="flex flex-col items-center bg-white/5 px-12 py-6 rounded-[2.5rem] border border-white/10">
                  <div className="flex items-center gap-5 text-white">
                    <Clock size={40} className="text-yellow-400" />
-                   <span className="text-7xl font-black font-oswald drop-shadow-2xl">
+                   <span className="text-7xl font-black font-oswald">
                      {currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                    </span>
                  </div>
@@ -216,36 +258,41 @@ const App: React.FC = () => {
                 <span className="text-lg font-black text-green-500 uppercase flex items-center justify-end gap-3">
                   <span className="w-3 h-3 bg-green-500 rounded-full animate-ping"></span> ONLINE
                 </span>
-                <p className="text-xs font-bold text-white/30 uppercase mt-2 tracking-widest">SCALED 4K READY</p>
+                <p className="text-xs font-bold text-white/30 uppercase mt-2">SISTEMA ATIVO 4K</p>
               </div>
             </div>
           </div>
         </header>
 
         <main className="flex-1 relative z-10 w-full px-16 py-8 grid grid-cols-12 gap-12 items-start overflow-hidden">
-          <div className={`${activeCategory.showMainOffer ? 'col-span-8' : 'col-span-12'} flex flex-col space-y-10`}>
+          <div className={`${hasSidebar ? 'col-span-8' : 'col-span-12'} flex flex-col space-y-10`}>
              <div className="flex items-center gap-8">
-                <div className="h-28 w-8 bg-[#d61a1a] rounded-full shadow-[0_0_50px_rgba(214,26,26,0.6)]"></div>
+                <div className="h-28 w-8 bg-[#d61a1a] rounded-full shadow-lg"></div>
                 <h2 className="text-[10rem] font-oswald font-black text-white italic tracking-tighter uppercase leading-none drop-shadow-2xl">
                   {activeCategory.label}
                 </h2>
              </div>
-             <PriceList items={activeCategory.items} fullWidth={!activeCategory.showMainOffer} />
+             <PriceList items={activeCategory.items} fullWidth={!hasSidebar} />
           </div>
 
-          {activeCategory.showMainOffer && (
-            <div className="col-span-4 h-full flex items-start justify-end pt-10">
-              <OfferCard 
-                itemName={activeCategory.offerItemName || activeCategory.items[0].name}
-                price={activeCategory.offerPrice || activeCategory.items[0].price}
-                imageUrl={activeCategory.offerImage || ''}
-              />
+          {hasSidebar && (
+            <div className="col-span-4 h-full flex flex-col gap-10 pt-10">
+              {activeCategory.showMainOffer && (
+                <OfferCard 
+                  itemName={activeCategory.offerItemName || activeCategory.items[0].name}
+                  price={activeCategory.offerPrice || activeCategory.items[0].price}
+                  imageUrl={activeCategory.offerImage || ''}
+                />
+              )}
+              {activeCategory.showSideOffers && (
+                <OffersSideArea items={activeCategory.items} />
+              )}
             </div>
           )}
         </main>
 
         <footer className="relative z-10 w-full px-16 py-12 flex justify-between items-center bg-gradient-to-t from-black/80 to-transparent">
-          <div className="flex gap-12 bg-black/60 backdrop-blur-3xl p-10 rounded-[4rem] border border-white/10 shadow-2xl">
+          <div className="flex gap-12 bg-black/60 backdrop-blur-3xl p-10 rounded-[4rem] border border-white/10">
              <div>
                 <span className="text-sm font-black text-yellow-500 uppercase tracking-widest block mb-2">WhatsApp</span>
                 <span className="text-6xl font-black text-white italic tracking-tighter">(99) 98410-3876</span>
@@ -260,21 +307,30 @@ const App: React.FC = () => {
           <div className={`flex gap-6 transition-all duration-500 ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-20 pointer-events-none'}`}>
             <button 
               onClick={() => setIsRemoteModalOpen(true)}
-              className="group flex items-center gap-4 bg-[#d61a1a] text-white px-12 py-8 rounded-[3rem] font-black uppercase text-lg shadow-2xl active:scale-95 transition-all"
+              className="bg-[#d61a1a] text-white px-10 py-7 rounded-[3rem] font-black uppercase text-lg shadow-2xl flex items-center gap-4 transition-all active:scale-95"
             >
-              <Smartphone size={32} /> Link Remoto
+              <Smartphone size={30} /> Remoto
             </button>
+
             <button 
-              onClick={() => setViewMode('admin')}
-              className="bg-white/10 text-white px-12 py-8 rounded-[3rem] font-black uppercase text-lg border border-white/20 active:scale-95 transition-all"
+              onClick={() => openAdmin('promotions')}
+              className="bg-yellow-400 text-red-900 px-10 py-7 rounded-[3rem] font-black uppercase text-lg shadow-2xl flex items-center gap-4 transition-all active:scale-95 border-b-4 border-yellow-600"
             >
-              <LayoutDashboard size={32} /> Setup
+              <Tag size={30} /> Ofertas & Promoções
             </button>
+
+            <button 
+              onClick={() => openAdmin('general')}
+              className="bg-white/10 text-white px-10 py-7 rounded-[3rem] font-black uppercase text-lg border border-white/20 transition-all active:scale-95"
+            >
+              <LayoutDashboard size={30} /> Setup
+            </button>
+
             <button 
               onClick={() => toggleTvMode()}
-              className="bg-yellow-400 text-black px-16 py-8 rounded-[3rem] font-black uppercase text-lg shadow-2xl active:scale-95 transition-all"
+              className="bg-red-600 text-white px-12 py-7 rounded-[3rem] font-black uppercase text-lg shadow-2xl transition-all active:scale-95 border-b-4 border-red-800"
             >
-              {isTvMode ? 'Sair da TV' : 'Modo TV 4K'}
+              {isTvMode ? 'Sair TV' : 'Modo TV'}
             </button>
           </div>
         </footer>
@@ -290,6 +346,7 @@ const App: React.FC = () => {
           resolution={resolution}
           setResolution={setResolution}
           triggerSpin={() => {setIsSpinning(true); setTimeout(() => setIsSpinning(false), 1000);}}
+          initialTab={initialAdminTab}
         />
       )}
 
