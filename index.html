@@ -21,33 +21,30 @@
         .font-pacifico {
             font-family: 'Pacifico', cursive;
         }
-        /* Fundo com imagem de carne na mesa e overlay degradê escuro */
         .bg-meat-table {
             background: 
-                linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, rgba(139, 0, 0, 0.9) 100%),
+                linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, rgba(50, 0, 0, 0.9) 100%),
                 url('https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&q=80&w=1920');
             background-size: cover;
             background-position: center;
-            background-repeat: no-repeat;
         }
-        .offer-glow {
-            box-shadow: 0 0 40px rgba(214, 26, 26, 0.4);
+        .glossy-red {
+            background: radial-gradient(circle at 35% 35%, #ff5e5e 0%, #d61a1a 55%, #7a0000 100%);
+            box-shadow: 
+                inset -8px -8px 20px rgba(0,0,0,0.5),
+                inset 8px 8px 20px rgba(255,255,255,0.4),
+                0 25px 50px -12px rgba(0,0,0,0.7);
         }
-        @keyframes pulse-slow {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.95; transform: scale(1.02); }
+        @keyframes loading {
+          0% { width: 0%; }
+          100% { width: 100%; }
         }
         .animate-pulse-slow {
-          animation: pulse-slow 3s ease-in-out infinite;
+          animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
-
-        /* Efeito de Glossy Button 3D */
-        .glossy-red {
-            background: radial-gradient(circle at 30% 30%, #ff4d4d 0%, #d61a1a 50%, #8b0000 100%);
-            box-shadow: 
-                inset -5px -5px 15px rgba(0,0,0,0.4),
-                inset 5px 5px 15px rgba(255,255,255,0.4),
-                0 10px 30px rgba(0,0,0,0.5);
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.9; transform: scale(1.01); }
         }
     </style>
 <script type="importmap">
