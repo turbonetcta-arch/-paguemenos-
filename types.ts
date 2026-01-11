@@ -3,7 +3,7 @@ export interface MenuItem {
   id: string;
   name: string;
   price: number;
-  originalPrice?: number; // Preço original para mostrar o desconto
+  originalPrice?: number;
   unit: 'kg' | 'un' | 'band';
   isOffer?: boolean;
 }
@@ -15,6 +15,13 @@ export interface Category {
   offerImage?: string;
   offerItemName?: string;
   offerPrice?: number;
+  showMainOffer?: boolean;
+  showSideOffers?: boolean;
 }
 
-export type ViewMode = 'display' | 'admin';
+export type ViewMode = 'display' | 'admin' | 'remote';
+
+export interface SyncMessage {
+  type: 'UPDATE_CATEGORY' | 'FORCE_REFRESH';
+  payload: any;
+}
