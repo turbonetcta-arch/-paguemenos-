@@ -22,6 +22,6 @@ export interface Category {
 export type ViewMode = 'display' | 'admin' | 'remote';
 
 export interface SyncMessage {
-  type: 'UPDATE_CATEGORY' | 'FORCE_REFRESH';
+  type: 'UPDATE_CATEGORY' | 'FORCE_REFRESH' | 'TOGGLE_TV';
   payload: any;
 }

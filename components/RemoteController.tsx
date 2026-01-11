@@ -7,20 +7,25 @@ import {
   Plus, 
   Minus, 
   Zap, 
-  Save, 
   Smartphone,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  MonitorPlay,
+  ArrowLeft
 } from 'lucide-react';
+
+const syncChannel = new BroadcastChannel('smart-pague-menos-sync');
 
 interface RemoteControllerProps {
   categories: Category[];
   onSync: (category: Category) => void;
+  onExit?: () => void;
 }
 
-const RemoteController: React.FC<RemoteControllerProps> = ({ categories, onSync }) => {
+const RemoteController: React.FC<RemoteControllerProps> = ({ categories, onSync, onExit }) => {
   const [activeCatIndex, setActiveCatIndex] = useState(0);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [isTvActive, setIsTvActive] = useState(false);
 
   const activeCategory = categories[activeCatIndex];
 
@@ -50,27 +55,43 @@ const RemoteController: React.FC<RemoteControllerProps> = ({ categories, onSync 
     setLastSync(new Date().toLocaleTimeString());
   };
 
+  const toggleTvOnDisplay = () => {
+    const newState = !isTvActive;
+    setIsTvActive(newState);
+    syncChannel.postMessage({ type: 'TOGGLE_TV', payload: newState });
+    setLastSync(new Date().toLocaleTimeString());
+  };
+
   return (
     <div className="min-h-screen bg-black text-white flex flex-col font-sans select-none">
       {/* Header Mobile */}
       <header className="bg-[#111] p-5 border-b border-white/10 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-3">
-          <div className="bg-red-600 p-2 rounded-lg animate-pulse">
+          {onExit && (
+            <button 
+              onClick={onExit}
+              className="p-2 hover:bg-white/10 rounded-full text-gray-400 mr-2 transition-colors"
+            >
+              <ArrowLeft size={24} />
+            </button>
+          )}
+          <div className="bg-[#d61a1a] p-2 rounded-lg animate-pulse">
             <Smartphone size={20} />
           </div>
           <div>
-            <h1 className="text-lg font-black uppercase tracking-tight">Controle Remoto</h1>
+            <h1 className="text-lg font-black uppercase tracking-tight">Painel Remoto</h1>
             <p className="text-[10px] text-green-500 font-bold uppercase tracking-widest flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span> Conectado à TV
+              <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span> Sincronizado
             </p>
           </div>
         </div>
-        {lastSync && (
-          <div className="text-right">
-             <p className="text-[8px] text-gray-500 font-bold uppercase">Última Sinc.</p>
-             <p className="text-[10px] font-mono text-yellow-500">{lastSync}</p>
-          </div>
-        )}
+        <button 
+          onClick={toggleTvOnDisplay}
+          className={`p-3 rounded-xl flex items-center gap-2 transition-all ${isTvActive ? 'bg-yellow-400 text-black' : 'bg-white/5 text-gray-400'}`}
+        >
+          <MonitorPlay size={20} />
+          <span className="text-[10px] font-black uppercase">{isTvActive ? 'TV: Full' : 'Ativar TV'}</span>
+        </button>
       </header>
 
       {/* Navegação de Categorias */}
@@ -147,13 +168,13 @@ const RemoteController: React.FC<RemoteControllerProps> = ({ categories, onSync 
           onClick={() => window.location.reload()}
           className="flex-1 bg-white/5 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2"
         >
-          <RefreshCw size={18} /> Atualizar
+          <RefreshCw size={18} /> Refresh
         </button>
         <button 
-          onClick={() => alert('Sincronização Automática Ativa!')}
+          onClick={() => alert('Sincronização Ativa!')}
           className="flex-[2] bg-green-600 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-green-600/20"
         >
-          <CheckCircle2 size={18} /> Pronto
+          <CheckCircle2 size={18} /> Online
         </button>
       </footer>
     </div>
