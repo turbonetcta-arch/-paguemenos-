@@ -9,7 +9,7 @@ import AdminPanel from './components/AdminPanel';
 import RemoteAccessModal from './components/RemoteAccessModal';
 import RemoteController from './components/RemoteController';
 import Logo from './components/Logo';
-import { LayoutDashboard, Clock, Smartphone, Wifi, MousePointer2, MonitorPlay, Zap } from 'lucide-react';
+import { LayoutDashboard, Clock, Smartphone, Wifi, MousePointer2, MonitorPlay, Zap, AlertCircle } from 'lucide-react';
 
 const syncChannel = new BroadcastChannel('smart-pague-menos-sync');
 
@@ -24,6 +24,7 @@ const App: React.FC = () => {
   const [syncToastMsg, setSyncToastMsg] = useState('');
   const [showControls, setShowControls] = useState(true);
   const [isBooting, setIsBooting] = useState(false);
+  const [needsInteraction, setNeedsInteraction] = useState(false);
   
   const [rotation, setRotation] = useState(0);
   const [resolution, setResolution] = useState<'auto' | '1080p' | '720p'>('auto');
@@ -32,7 +33,6 @@ const App: React.FC = () => {
 
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sistema de Detecção de Resolução
   useEffect(() => {
     const handleResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', handleResize);
@@ -43,26 +43,32 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Automação: Entrar no modo TV com animação de boot
   const toggleTvMode = useCallback((forceState?: boolean) => {
     const newState = forceState !== undefined ? forceState : !isTvMode;
     
     if (newState) {
-      setIsBooting(true);
-      document.documentElement.requestFullscreen().catch(() => {});
-      setTimeout(() => {
-        setIsTvMode(true);
-        setShowControls(false);
-        setIsBooting(false);
-      }, 1500);
+      document.documentElement.requestFullscreen()
+        .then(() => {
+          setIsBooting(true);
+          setNeedsInteraction(false);
+          setTimeout(() => {
+            setIsTvMode(true);
+            setShowControls(false);
+            setIsBooting(false);
+          }, 1500);
+        })
+        .catch((err) => {
+          console.warn("Fullscreen bloqueado. Necessita interação do usuário.", err);
+          setNeedsInteraction(true);
+        });
     } else {
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
       setIsTvMode(false);
       setShowControls(true);
+      setNeedsInteraction(false);
     }
   }, [isTvMode]);
 
-  // Listener de Comandos Remotos
   useEffect(() => {
     const handleMessage = (event: MessageEvent<SyncMessage>) => {
       switch (event.data.type) {
@@ -70,7 +76,7 @@ const App: React.FC = () => {
           const updatedCat = event.data.payload;
           setCategories(prev => prev.map(cat => cat.id === updatedCat.id ? updatedCat : cat));
           if (viewMode === 'display') {
-            setSyncToastMsg('Preços Atualizados via Celular');
+            setSyncToastMsg('Cardápio Atualizado');
             setShowSyncToast(true);
             setTimeout(() => setShowSyncToast(false), 3000);
           }
@@ -89,22 +95,20 @@ const App: React.FC = () => {
     syncChannel.postMessage({ type: 'UPDATE_CATEGORY', payload: updatedCategory });
   }, []);
 
-  // Carousel Automático
   useEffect(() => {
-    if (viewMode === 'display' && !isBooting) {
+    if (viewMode === 'display' && !isBooting && !needsInteraction) {
       const interval = setInterval(() => {
         setCurrentIndex(prev => (prev + 1) % categories.length);
       }, 15000);
       return () => clearInterval(interval);
     }
-  }, [viewMode, categories.length, isBooting]);
+  }, [viewMode, categories.length, isBooting, needsInteraction]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Lógica de Escala Automática (Resolução Independente)
   const layoutMetrics = useMemo(() => {
     const targetW = resolution === 'auto' ? 1920 : (resolution === '1080p' ? 1920 : 1280);
     const targetH = resolution === 'auto' ? 1080 : (resolution === '1080p' ? 1080 : 720);
@@ -128,7 +132,7 @@ const App: React.FC = () => {
     top: '50%',
     left: '50%',
     transformOrigin: 'center center',
-    transition: 'transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)',
+    transition: 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
     willChange: 'transform',
     opacity: isBooting ? 0 : 1,
   };
@@ -146,7 +150,24 @@ const App: React.FC = () => {
   return (
     <div className={`relative min-h-screen w-full bg-[#050505] overflow-hidden select-none`}>
       
-      {/* Tela de Boot Sequencial */}
+      {needsInteraction && (
+        <div className="fixed inset-0 z-[400] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-10 text-center animate-in fade-in duration-500">
+          <div className="bg-[#111] p-12 rounded-[3rem] border border-white/10 shadow-[0_0_100px_rgba(214,26,26,0.3)] max-w-xl">
+            <AlertCircle className="text-yellow-400 mx-auto mb-6" size={80} />
+            <h2 className="text-4xl font-black text-white uppercase tracking-tighter mb-4">Ação Necessária</h2>
+            <p className="text-gray-400 text-lg mb-8 leading-relaxed">
+              Para ativar o Modo TV remotamente, o navegador exige um clique inicial nesta tela para permitir o controle de tela cheia.
+            </p>
+            <button 
+              onClick={() => toggleTvMode(true)}
+              className="bg-[#d61a1a] text-white px-16 py-6 rounded-2xl font-black uppercase text-xl shadow-2xl active:scale-95 transition-all"
+            >
+              Ativar Link de TV
+            </button>
+          </div>
+        </div>
+      )}
+
       {isBooting && (
         <div className="fixed inset-0 z-[300] bg-black flex flex-col items-center justify-center gap-8">
            <div className="relative">
@@ -157,12 +178,11 @@ const App: React.FC = () => {
              <div className="w-64 h-1 bg-white/10 rounded-full overflow-hidden">
                <div className="h-full bg-red-600 animate-[loading_1.5s_ease-in-out]"></div>
              </div>
-             <span className="text-xs font-black text-gray-500 uppercase tracking-[0.5em] animate-pulse">Iniciando Automação TV</span>
+             <span className="text-xs font-black text-gray-500 uppercase tracking-[0.5em] animate-pulse">Iniciando Painel Digital</span>
            </div>
         </div>
       )}
 
-      {/* Notificação de Sincronia */}
       {showSyncToast && (
         <div className="fixed top-12 left-1/2 -translate-x-1/2 z-[250] bg-[#d61a1a] text-white px-12 py-6 rounded-full font-black uppercase tracking-[0.2em] shadow-[0_20px_60px_rgba(214,26,26,0.5)] flex items-center gap-6 animate-in slide-in-from-top-12 duration-500">
            <Zap size={24} className="text-yellow-400 fill-yellow-400" />
@@ -179,7 +199,7 @@ const App: React.FC = () => {
                 <h1 className="text-8xl font-oswald font-black text-white tracking-tighter uppercase leading-none">
                   Smart <span className="text-yellow-500">PAGUE MENOS</span>
                 </h1>
-                <p className="text-2xl font-bold text-red-500 tracking-[0.5em] uppercase mt-2">Tecnologia em Carnes</p>
+                <p className="text-2xl font-bold text-red-500 tracking-[0.5em] uppercase mt-2">Qualidade que você confia</p>
               </div>
             </div>
 
@@ -194,9 +214,9 @@ const App: React.FC = () => {
               </div>
               <div className="text-right">
                 <span className="text-lg font-black text-green-500 uppercase flex items-center justify-end gap-3">
-                  <span className="w-3 h-3 bg-green-500 rounded-full animate-ping"></span> SISTEMA ONLINE
+                  <span className="w-3 h-3 bg-green-500 rounded-full animate-ping"></span> ONLINE
                 </span>
-                <p className="text-xs font-bold text-white/30 uppercase mt-2 tracking-widest">RES: {layoutMetrics.width} (AUTO-SCALED)</p>
+                <p className="text-xs font-bold text-white/30 uppercase mt-2 tracking-widest">SCALED 4K READY</p>
               </div>
             </div>
           </div>
@@ -242,7 +262,7 @@ const App: React.FC = () => {
               onClick={() => setIsRemoteModalOpen(true)}
               className="group flex items-center gap-4 bg-[#d61a1a] text-white px-12 py-8 rounded-[3rem] font-black uppercase text-lg shadow-2xl active:scale-95 transition-all"
             >
-              <Smartphone size={32} className="group-hover:rotate-12 transition-transform" /> Link Remoto
+              <Smartphone size={32} /> Link Remoto
             </button>
             <button 
               onClick={() => setViewMode('admin')}

@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { MenuItem } from '../types';
 
 interface PriceListProps {
@@ -8,15 +8,23 @@ interface PriceListProps {
 }
 
 const PriceList: React.FC<PriceListProps> = ({ items, fullWidth = false }) => {
-  const [updatedIds, setUpdatedIds] = useState<Set<string>>(new Set());
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const prevItemsRef = useRef<MenuItem[]>([]);
 
-  // Monitorar mudanças nos preços para disparar o efeito visual de automação
   useEffect(() => {
-    const ids = new Set(items.map(i => `${i.id}-${i.price}`));
-    // Simples detecção de mudança: se o preço mudou, destaca o item
-    // Aqui usamos um efeito visual temporário
-    const timeout = setTimeout(() => setUpdatedIds(new Set()), 2000);
-    return () => clearTimeout(timeout);
+    // Encontrar qual item mudou de preço
+    const changedItem = items.find((item, index) => {
+      const prevItem = prevItemsRef.current[index];
+      return prevItem && prevItem.id === item.id && prevItem.price !== item.price;
+    });
+
+    if (changedItem) {
+      setHighlightedId(changedItem.id);
+      const timeout = setTimeout(() => setHighlightedId(null), 3000);
+      return () => clearTimeout(timeout);
+    }
+
+    prevItemsRef.current = items;
   }, [items]);
 
   return (
@@ -25,11 +33,11 @@ const PriceList: React.FC<PriceListProps> = ({ items, fullWidth = false }) => {
         <div 
           key={item.id} 
           className={`flex items-center justify-between py-4 px-6 rounded-2xl transition-all duration-700 group border ${
-            updatedIds.has(`${item.id}-${item.price}`) 
-              ? 'bg-yellow-400/20 border-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.3)] scale-[1.03]' 
+            highlightedId === item.id 
+              ? 'bg-yellow-400/30 border-yellow-400 shadow-[0_0_30px_rgba(250,204,21,0.4)] scale-[1.02] z-10' 
               : 'border-transparent hover:bg-white/10 hover:border-white/5'
           } ${
-            idx % 2 === 0 ? 'bg-white/5' : 'bg-transparent'
+            idx % 2 === 0 && highlightedId !== item.id ? 'bg-white/5' : 'bg-transparent'
           }`}
         >
           <div className="flex flex-col min-w-0 flex-1">
@@ -42,14 +50,14 @@ const PriceList: React.FC<PriceListProps> = ({ items, fullWidth = false }) => {
                   R$ {item.originalPrice.toFixed(2)}
                 </span>
               )}
-              <span className="text-[10px] font-black text-red-400 uppercase tracking-[0.2em] opacity-80">
+              <span className={`text-[10px] font-black uppercase tracking-[0.2em] transition-colors ${item.isOffer ? 'text-yellow-400' : 'text-red-400 opacity-80'}`}>
                 {item.isOffer ? 'Oferta Especial' : 'Qualidade Premium'}
               </span>
             </div>
           </div>
           <div className="flex items-baseline gap-1 ml-4 shrink-0">
             <span className="text-xl font-bold text-yellow-500">R$</span>
-            <span className="text-5xl font-oswald font-black text-white tracking-tighter drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)]">
+            <span className={`text-5xl font-oswald font-black tracking-tighter drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] transition-colors ${highlightedId === item.id ? 'text-yellow-400' : 'text-white'}`}>
               {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
             <span className="text-sm font-bold text-white/40 ml-1 uppercase">{item.unit}</span>
